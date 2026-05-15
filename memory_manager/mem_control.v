@@ -1,3 +1,5 @@
+//Note that this is isolated system, assuming only CPU and RAM, no cache
+
 module mem_control (
     input wire clk,
     input wire reset, //active high
