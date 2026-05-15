@@ -31,11 +31,18 @@ module mem_control (
     localparam WRITE_COL_FAILSWITCH = 4'd11, READ_COL_FAILSWITCH = 4'd12;
     localparam WAITING_TIME = 2'd3;
 
+    // New localparams for the re-row states
+    localparam WRITE_REROW = 4'd9, WRITE_REROW_WAIT = 4'd10;
+    localparam READ_REROW  = 4'd13, READ_REROW_WAIT  = 4'd14;
+
     reg [2:0] state;
     reg [1:0] counter;
     reg [12:0] row;
     reg [8:0] col;
     reg [31:0] tempData;
+
+    // New reg: flat next-address incrementer for bank+row
+    reg [14:0] next_bank_row; // {BankAddr[1:0], row[12:0]}
 
     always @(posedge clk or posedge reset) begin
         if (reset) begin
@@ -107,10 +114,30 @@ module mem_control (
 
 
                 WRITE_COL_FAILSWITCH : begin
-                    //do something
+                    // col overflowed: must move to next bank/row, col resets to 0
+                    col <= 9'd0;
+                    next_bank_row <= {BankAddr, row} + 1'b1;
+                    DataOut <= WrData[15:0];
+                    state <= WRITE_REROW;
+                end
 
+                WRITE_REROW : begin
+                    // Apply incremented bank and row, pulse RowAddrStrobe
+                    BankAddr  <= next_bank_row[14:13];
+                    row       <= next_bank_row[12:0];
+                    AddrOut   <= next_bank_row[12:0];
+                    RowAddrStrobe <= 0;
+                    state <= WRITE_REROW_WAIT;
+                end
 
-
+                WRITE_REROW_WAIT : begin
+                    RowAddrStrobe <= 1;
+                    if (counter == WAITING_TIME) begin
+                        counter <= 0;
+                        state <= WRITE_2;   // proceed to write second word
+                    end else begin
+                        counter <= counter + 1;
+                    end
                 end
 
 
@@ -148,9 +175,29 @@ module mem_control (
 
 
                 READ_COL_FAILSWITCH : begin
-                    
+                    // col overflowed: must move to next bank/row, col resets to 0
+                    col <= 9'd0;
+                    next_bank_row <= {BankAddr, row} + 1'b1;
+                    state <= READ_REROW;
+                end
 
+                READ_REROW : begin
+                    // Apply incremented bank and row, pulse RowAddrStrobe
+                    BankAddr  <= next_bank_row[14:13];
+                    row       <= next_bank_row[12:0];
+                    AddrOut   <= next_bank_row[12:0];
+                    RowAddrStrobe <= 0;
+                    state <= READ_REROW_WAIT;
+                end
 
+                READ_REROW_WAIT : begin
+                    RowAddrStrobe <= 1;
+                    if (counter == WAITING_TIME) begin
+                        counter <= 0;
+                        state <= READ_2;    // proceed to read second word
+                    end else begin
+                        counter <= counter + 1;
+                    end
                 end
 
 
