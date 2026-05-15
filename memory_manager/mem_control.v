@@ -1,11 +1,3 @@
-//Memory control for the SDRAM on the De0 Nano Board 
-//SDRAM uses 16 bit cells but we have 32 bit lookups on the RV32 ISA so we will build a buffer system of sorts
-
-//This version made the following changes from the prev:
-//made col 10 bits instead of 9
-//accidently made it big endian instead of little
-//busy and done flag fixes
-
 module mem_control (
     input wire clk,
     input wire reset, //active high
@@ -26,201 +18,148 @@ module mem_control (
     output reg busy, //to CPU, active high
     output reg done, //to CPU, active high
 );
-    localparam IDLE = 4'd0, WAIT_1 = 4'd1, WAIT_2 = 4'd2, FIGURE_NEXT_ADDR_1 = 4'd3, WAIT_4 = 4'd4;
-    localparam READ_1 = 4'd5, READ_2 = 4'd6, WRITE_1 = 4'd7, WRITE_2 = 4'd8;
-    localparam WRITE_COL_FAILSWITCH = 4'd11, READ_COL_FAILSWITCH = 4'd12;
+    localparam IDLE             = 4'd0;
+    localparam WAIT             = 4'd1;  // replaces WAIT_1/2/3/4, WRITE_REROW_WAIT, READ_REROW_WAIT
+    localparam WRITE_1          = 4'd2;
+    localparam WRITE_2          = 4'd3;
+    localparam READ_1           = 4'd4;
+    localparam READ_2           = 4'd5;
+    localparam COL_FAILSWITCH   = 4'd6;  // replaces WRITE_COL_FAILSWITCH, READ_COL_FAILSWITCH
+    localparam REROW            = 4'd7;  // replaces WRITE_REROW, READ_REROW
+    localparam DONE             = 4'd8;
+
     localparam WAITING_TIME = 2'd3;
 
-    localparam WRITE_REROW = 4'd9, WRITE_REROW_WAIT = 4'd10;
-    localparam READ_REROW  = 4'd13, READ_REROW_WAIT  = 4'd14;
-
     reg [3:0] state;
+    reg [3:0] next_state;    // tells WAIT where to go when counter expires
     reg [1:0] counter;
     reg [12:0] row;
-    reg [9:0] col;           // Point 1: widened from 9 to 10 bits
+    reg [9:0] col;
     reg [31:0] tempData;
-
     reg [14:0] next_bank_row;
 
     always @(posedge clk or posedge reset) begin
         if (reset) begin
-            WrEnOut <= 1'b1;
-            DataMask <= 2'd0;
-            RowAddrStrobe <= 1;
-            ColAddrStrobe <= 1;
-            busy <= 0;
-            done <= 0;
-            state <= 0;
-            counter <= 0;
+            WrEnOut        <= 1'b1;
+            DataMask       <= 2'd0;
+            RowAddrStrobe  <= 1;
+            ColAddrStrobe  <= 1;
+            busy           <= 0;
+            done           <= 0;
+            state          <= IDLE;
+            next_state     <= IDLE;
+            counter        <= 0;
         end else begin
             case (state)
+
                 IDLE : begin
                     if (EnIn) begin
-                        row <= AddrIn[24:12];        // Point 1: adjusted slice
-                        BankAddr <= AddrIn[11:10];   // Point 1: adjusted slice
-                        col <= AddrIn[9:0];          // Point 1: adjusted slice, now 10 bits
-                        AddrOut <= AddrIn[24:12];    // Point 1: adjusted slice
+                        row           <= AddrIn[24:12];
+                        BankAddr      <= AddrIn[11:10];
+                        col           <= AddrIn[9:0];
+                        AddrOut       <= AddrIn[24:12];
                         RowAddrStrobe <= 0;
-                        state <= WAIT_1;
-                        busy <= 1;
-                        done <= 0;
-                    end else begin                   // Point 3: moved into else
+                        busy          <= 1;
+                        done          <= 0;
+                        // After RAS wait: branch on WrEnIn
+                        if (WrEnIn) begin
+                            DataOut    <= WrData[15:0];  // latch low half early
+                            next_state <= WRITE_1;
+                        end else begin
+                            next_state <= READ_1;
+                        end
+                        state <= WAIT;
+                    end else begin
                         busy <= 0;
                         done <= 0;
                     end
                 end
 
-
-                WAIT_1 : begin
-                    RowAddrStrobe <= 1;
-                    if(counter == WAITING_TIME) begin
+                // Single shared wait state: counts to WAITING_TIME then jumps to next_state
+                WAIT : begin
+                    RowAddrStrobe <= 1;   // deassert RAS if it was pulsed (harmless if already high)
+                    ColAddrStrobe <= 1;   // deassert CAS if it was pulsed (harmless if already high)
+                    WrEnOut       <= 1;   // deassert WE  if it was pulsed (harmless if already high)
+                    if (counter == WAITING_TIME) begin
                         counter <= 0;
-                        if (WrEnIn) begin
-                            state <= WRITE_1;
-                            DataOut <= WrData[15:0];  // Point 2: low half first
-                        end else begin
-                            state <= READ_1;
-                        end
+                        state   <= next_state;
                     end else begin
                         counter <= counter + 1;
                     end
                 end
-
 
                 WRITE_1 : begin
                     ColAddrStrobe <= 0;
-                    WrEnOut <= 0;
-                    AddrOut <= {3'd0, col};           // Point 1: adjusted mask
-                    state <= WAIT_2;
-                end
-
-
-                WAIT_2 : begin
-                    ColAddrStrobe <= 1;
-                    WrEnOut <= 1;
-                    if(counter == WAITING_TIME) begin
-                        counter <= 0;
-                        if (col == 10'd1023) begin    // Point 1: adjusted overflow check
-                            state <= WRITE_COL_FAILSWITCH;
-                        end else begin
-                            state <= WRITE_2;
-                            col <= col + 1;
-                        end
+                    WrEnOut       <= 0;
+                    AddrOut       <= {3'd0, col};
+                    // After CAS wait: advance col, choose next or failswitch
+                    if (col == 10'd1023) begin
+                        next_state <= COL_FAILSWITCH;
                     end else begin
-                        counter <= counter + 1;
+                        col        <= col + 1;
+                        next_state <= WRITE_2;
                     end
+                    state <= WAIT;
                 end
-
-
-                WRITE_COL_FAILSWITCH : begin
-                    col <= 10'd0;
-                    next_bank_row <= {BankAddr, row} + 1'b1;
-                    DataOut <= WrData[31:16];         // Point 2: high half second
-                    state <= WRITE_REROW;
-                end
-
-                WRITE_REROW : begin
-                    BankAddr  <= next_bank_row[14:13];
-                    row       <= next_bank_row[12:0];
-                    AddrOut   <= next_bank_row[12:0];
-                    RowAddrStrobe <= 0;
-                    state <= WRITE_REROW_WAIT;
-                end
-
-                WRITE_REROW_WAIT : begin
-                    RowAddrStrobe <= 1;
-                    if (counter == WAITING_TIME) begin
-                        counter <= 0;
-                        state <= WRITE_2;
-                    end else begin
-                        counter <= counter + 1;
-                    end
-                end
-
 
                 WRITE_2 : begin
                     ColAddrStrobe <= 0;
-                    WrEnOut <= 0;
-                    AddrOut <= {3'd0, col};           // Point 1: adjusted mask
-                    state <= WAIT_3;
+                    WrEnOut       <= 0;
+                    AddrOut       <= {3'd0, col};
+                    next_state    <= DONE;
+                    state         <= WAIT;
                 end
-
 
                 READ_1 : begin
                     ColAddrStrobe <= 0;
-                    AddrOut <= {3'd0, col};           // Point 1: adjusted mask
-                    state <= WAIT_4;
-                end
-
-
-                WAIT_4 : begin
-                    ColAddrStrobe <= 1;
-                    if(counter == WAITING_TIME) begin
-                        if (col == 10'd1023) begin    // Point 1: adjusted overflow check
-                            state <= READ_COL_FAILSWITCH;
-                        end else begin
-                            state <= READ_2;
-                            col <= col + 1;
-                        end
-                        counter <= 0;
-                        tempData[15:0] <= ReDataFromRAM;  // Point 2: low half first, Point 5: done removed
+                    AddrOut       <= {3'd0, col};
+                    // After CAS wait: advance col, choose next or failswitch
+                    if (col == 10'd1023) begin
+                        next_state <= COL_FAILSWITCH;
                     end else begin
-                        counter <= counter + 1;
+                        col        <= col + 1;
+                        next_state <= READ_2;
                     end
+                    state <= WAIT;
                 end
-
-
-                READ_COL_FAILSWITCH : begin
-                    col <= 10'd0;
-                    next_bank_row <= {BankAddr, row} + 1'b1;
-                    state <= READ_REROW;
-                end
-
-                READ_REROW : begin
-                    BankAddr  <= next_bank_row[14:13];
-                    row       <= next_bank_row[12:0];
-                    AddrOut   <= next_bank_row[12:0];
-                    RowAddrStrobe <= 0;
-                    state <= READ_REROW_WAIT;
-                end
-
-                READ_REROW_WAIT : begin
-                    RowAddrStrobe <= 1;
-                    if (counter == WAITING_TIME) begin
-                        counter <= 0;
-                        state <= READ_2;
-                    end else begin
-                        counter <= counter + 1;
-                    end
-                end
-
 
                 READ_2 : begin
                     ColAddrStrobe <= 0;
-                    AddrOut <= {3'd0, col};           // Point 1: adjusted mask
-                    state <= WAIT_3;
+                    AddrOut       <= {3'd0, col};
+                    next_state    <= DONE;
+                    state         <= WAIT;
                 end
 
-
-                WAIT_3 : begin
-                    ColAddrStrobe <= 1;
-                    WrEnOut <= 1;
-                    if(counter == WAITING_TIME) begin
-                        state <= DONE;
-                        counter <= 0;
-                        tempData[31:16] <= ReDataFromRAM;  // Point 2: high half second
-                    end else begin
-                        counter <= counter + 1;
-                    end
+                COL_FAILSWITCH : begin
+                    // col wrapped: move to next bank/row, reset col
+                    col           <= 10'd0;
+                    next_bank_row <= {BankAddr, row} + 1'b1;
+                    // Capture the second half for the write path while WrData is still valid
+                    if (WrEnIn) DataOut <= WrData[31:16];
+                    state <= REROW;
                 end
-                
+
+                REROW : begin
+                    // Apply incremented bank+row and pulse RAS
+                    BankAddr      <= next_bank_row[14:13];
+                    row           <= next_bank_row[12:0];
+                    AddrOut       <= next_bank_row[12:0];
+                    RowAddrStrobe <= 0;
+                    // Route back to the correct second-word state after the RAS wait
+                    next_state    <= WrEnIn ? WRITE_2 : READ_2;
+                    state         <= WAIT;
+                end
 
                 DONE : begin
-                    done <= 1;
-                    ReData <= tempData;               // Point 7: was DataOut, now ReData
-                    state <= IDLE;
+                    // Capture the second half that just came back from RAM (read path)
+                    // For the write path this is a no-op since tempData[31:16] was never used
+                    tempData[31:16] <= ReDataFromRAM;
+                    ReData          <= {ReDataFromRAM, tempData[15:0]};
+                    done            <= 1;
+                    state           <= IDLE;
                 end
-                default: 
+
+                default: state <= IDLE;
             endcase
         end
     end
