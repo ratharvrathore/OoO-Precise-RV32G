@@ -87,7 +87,7 @@ module mem_control_tb;
 
     task do_reset;
         begin
-            reset = 1;
+            reset = 0;
             EnIn  = 0; WrEnIn = 0; AddrIn = 0; WrData = 0; ReDataFromRAM = 0;
             @(posedge clk); #1;
             @(posedge clk); #1;

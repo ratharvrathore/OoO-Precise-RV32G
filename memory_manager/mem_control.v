@@ -135,7 +135,7 @@ module mem_control (
                 COL_FAILSWITCH : begin
                     // col wrapped: move to next bank/row, reset col
                     col           <= 10'd0;
-                    next_bank_row <= {BankAddr, row} + 1'b1;
+                    next_bank_row <= {row, BankAddr} + 1'b1;
                     // Capture the second half for the write path while WrData is still valid
                     if (WrEnIn) DataOut <= WrData[31:16];
                     state <= REROW;
@@ -143,9 +143,9 @@ module mem_control (
 
                 REROW : begin
                     // Apply incremented bank+row and pulse RAS
-                    BankAddr      <= next_bank_row[14:13];
-                    row           <= next_bank_row[12:0];
-                    AddrOut       <= next_bank_row[12:0];
+                    BankAddr      <= next_bank_row[1:0];
+                    row           <= next_bank_row[14:2];
+                    AddrOut       <= next_bank_row[14:2];
                     RowAddrStrobe <= 0;
                     // Route back to the correct second-word state after the RAS wait
                     next_state    <= WrEnIn ? WRITE_2 : READ_2;
