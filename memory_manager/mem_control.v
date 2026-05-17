@@ -18,7 +18,7 @@ module mem_control (
     output reg RowAddrStrobe, //active low
     output reg ColAddrStrobe, //active low
     output reg busy, //to CPU, active high
-    output reg done, //to CPU, active high
+    output reg done //to CPU, active high
 );
     localparam IDLE             = 4'd0;
     localparam WAIT             = 4'd1;  // replaces WAIT_1/2/3/4, WRITE_REROW_WAIT, READ_REROW_WAIT
