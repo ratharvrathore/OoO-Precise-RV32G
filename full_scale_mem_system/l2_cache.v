@@ -69,8 +69,6 @@ module l2_cache (
     localparam ST_EVALUATE          = 4'd1;   // decide hit/miss after registering req
     localparam ST_RECV_EVICT        = 4'd2;   // absorb dirty evict line from L1 (8 beats)
     localparam ST_SEND_FETCH        = 4'd3;   // simultaneously send requested line to L1 (8 beats)
-    // (ST_RECV_EVICT and ST_SEND_FETCH run concurrently using same beat counter)
-    localparam ST_WB_WAIT           = 4'd4;   // wait for RAM to be ready before writeback
     localparam ST_WB_BURST          = 4'd5;   // write dirty evicted line to RAM (4 × 32-bit words)
     localparam ST_WB_WAIT_DONE      = 4'd6;   // wait for each mem_control word to finish
     localparam ST_RAM_FETCH_ISSUE   = 4'd7;   // issue 4 × 32-bit reads from RAM (line fill)
@@ -79,29 +77,19 @@ module l2_cache (
     localparam ST_WRITE_HIT         = 4'd10;  // write-miss from L1, hit in L2 → update word
     localparam ST_WRITE_RAM         = 4'd11;  // write-miss from L1, miss in L2 → fire-and-forget to RAM
     localparam ST_WRITE_RAM_WAIT    = 4'd12;  // wait for RAM write to complete
-    localparam ST_DONE              = 4'd13;
 
     reg [3:0] state;
-    reg [2:0] beat;       // 0..7 for 8-beat line transfers
-    reg [1:0] ram_word;   // 0..3 for 4-word RAM burst
+    reg [2:0] beat; 
+    reg [1:0] ram_word;
 
-    // Buffers
-    reg [LINE_BITS-1:0] evict_buf;    // dirty line received from L1
-    reg [LINE_BITS-1:0] ram_fetch_buf; // line assembled from RAM
-    reg [LINE_BITS-1:0] writeback_buf; // dirty L2 line to write back to RAM
-
-    // Latch the write data from L1 (2 cycles: low half then high half)
+    reg [LINE_BITS-1:0] evict_buf;
+    reg [LINE_BITS-1:0] ram_fetch_buf;
+    reg [LINE_BITS-1:0] writeback_buf; 
     reg [31:0] wr_data_buf;
-    reg [31:0] latch_req_addr; // latch address at request time
-
-    // Evict dirty flag for the line being replaced
-    reg do_writeback;
+    reg [31:0] latch_req_addr;
 
     integer i, j;
 
-    // -------------------------------------------------------------------------
-    // Sequential FSM
-    // -------------------------------------------------------------------------
     always @(posedge clk or posedge reset) begin
         if (reset) begin
             l2_busy        <= 1'b0;
@@ -119,7 +107,6 @@ module l2_cache (
             writeback_buf  <= 128'd0;
             wr_data_buf    <= 32'd0;
             latch_req_addr <= 32'd0;
-            do_writeback   <= 1'b0;
             for (i = 0; i < SETS; i = i + 1) begin
                 lru[i] <= 1'b0;
                 for (j = 0; j < WAYS; j = j + 1) begin
@@ -153,10 +140,8 @@ module l2_cache (
                         end else begin
                             if (valid[req_set][evict_way] && dirty[req_set][evict_way]) begin
                                 writeback_buf <= data[req_set][evict_way];
-                                do_writeback  <= 1'b1;
-                                state         <= ST_WB_WAIT;
+                                state         <= ST_WB_BURST;
                             end else begin
-                                do_writeback <= 1'b0;
                                 state        <= ST_RAM_FETCH_ISSUE;
                             end
                         end
@@ -204,19 +189,12 @@ module l2_cache (
                     end
                 end
 
-                ST_WB_WAIT : begin
-                    if (!ram_busy) begin
-                        ram_word <= 2'd0;
-                        state    <= ST_WB_BURST;
-                    end
-                end
-
                 ST_WB_BURST : begin
                     if (!ram_busy) begin
                         // Compute RAM address: line base + word offset
                         // L2 evict address = reconstruct from evict way tag + set + 0 offset
                         //this is problematic
-                        ram_addr    <= {tag[req_set][evict_way], req_set, 4'd0} + {28'd0, ram_word, 2'd0};
+                        ram_addr    <= {tag[req_set][evict_way], req_set, 4'd0} + {29'd0, ram_word, 1'd0};
                         ram_wr_data <= writeback_buf[ram_word*32 +: 32];
                         ram_en      <= 1'b1;
                         ram_wr_en   <= 1'b1;
@@ -240,7 +218,7 @@ module l2_cache (
 
                 ST_RAM_FETCH_ISSUE : begin
                     if (!ram_busy) begin
-                        ram_addr  <= {latch_req_addr[31:4], 4'd0} + {28'd0, ram_word, 2'd0};
+                        ram_addr  <= {latch_req_addr[31:4], 4'd0} + {29'd0, ram_word, 1'd0};
                         ram_en    <= 1'b1;
                         ram_wr_en <= 1'b0;
                         state     <= ST_RAM_FETCH_WAIT;
@@ -286,8 +264,6 @@ module l2_cache (
                         endcase
                     end
 
-                    // Drive the new line on the fetch lane to L1
-                    // The line is now in data[req_set][evict_way] (just installed)
                     case (beat)
                         3'd0: l2_to_l1_data <= ram_fetch_buf[15:0];
                         3'd1: l2_to_l1_data <= ram_fetch_buf[31:16];
@@ -301,22 +277,13 @@ module l2_cache (
                     endcase
 
                     if (beat == 3'd7) begin
-                        // Store L1's dirty evict into L2 (exclusive cache protocol)
                         if (l1_evict_valid) begin
-                            // We already used evict_way for the RAM line.
-                            // Store L1 evict in the other way if valid/dirty concerns allow.
-                            // Simple policy: if the other way is not dirty, use it;
-                            // otherwise we must writeback the other way first.
-                            // For clarity, use a separate "accept evict" path here.
-                            // In this iteration: install in ~evict_way if not dirty, else stall.
-                            // (A complete implementation would use a victim buffer.)
                             if (!dirty[req_set][~evict_way]) begin
                                 data [req_set][~evict_way] <= evict_buf;
-                                tag  [req_set][~evict_way] <= req_tag; // see note in ST_RECV_EVICT
+                                tag  [req_set][~evict_way] <= req_tag;
                                 valid[req_set][~evict_way] <= 1'b1;
                                 dirty[req_set][~evict_way] <= 1'b1;
                             end
-                            // else: evict buf is dropped (simplified); full impl uses victim buf
                         end
                         beat    <= 3'd0;
                         l2_done <= 1'b1;
@@ -326,13 +293,8 @@ module l2_cache (
                     end
                 end
 
-                // -----------------------------------------------------------
-                // Write-miss from L1, hit in L2: update the word in-place
-                // -----------------------------------------------------------
                 ST_WRITE_HIT : begin
-                    // Second cycle: capture high half of write data
                     wr_data_buf[31:16] <= l1_to_l2_data;
-                    // Now assemble full 32-bit word and write it
                     data[req_set][hit_way][req_woff*32 +: 32] <=
                         {l1_to_l2_data, wr_data_buf[15:0]};
                     dirty[req_set][hit_way] <= 1'b1;
@@ -341,11 +303,7 @@ module l2_cache (
                     state   <= ST_IDLE;
                 end
 
-                // -----------------------------------------------------------
-                // Write-miss in both L1 and L2 → fire-and-forget to RAM
-                // -----------------------------------------------------------
                 ST_WRITE_RAM : begin
-                    // Capture high half of write data (low half captured in EVALUATE)
                     wr_data_buf[31:16] <= l1_to_l2_data;
                     state <= ST_WRITE_RAM_WAIT;
                 end
@@ -363,11 +321,6 @@ module l2_cache (
                         l2_done   <= 1'b1;
                         state     <= ST_IDLE;
                     end
-                end
-
-                ST_DONE : begin
-                    l2_done <= 1'b1;
-                    state   <= ST_IDLE;
                 end
 
                 default: state <= ST_IDLE;
