@@ -193,7 +193,7 @@ module l1_cache (
                             l1_to_l2_data <= evict_buf[127:112];
                             fetch_buf[127:112] <= l2_to_l1_data;
                         end
-                        default: 
+                        default: ;
                     endcase
 
                     if (beat == 3'd7) begin
