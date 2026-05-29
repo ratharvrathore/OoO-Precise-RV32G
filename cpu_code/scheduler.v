@@ -32,4 +32,6 @@ module scheduler (
     //If the value of the R1 and R2 does not exist, then they point to the ROB also where if it does not exist again it points to some tag in scheduler which will gernerate its result
     //we will then write that value in the tag region 
     //Note that scheduler itself is the transition from D to S and then to E
+
+    //Data in the scheduler: validA, dataA, tagA, validB, dataB, tagB, related control varibales
 endmodule
