@@ -1,55 +1,167 @@
-module reorder_buffer (
-    input wire clk,
-    input wire reset,
+module reorder_buffer #(
+    parameter SCHEDULER_TAG_BITS = 3,
+    parameter REORDER_TAG_BITS = 4
+) (
+    input wire clk, reset,
 
-    //data collection
-    input wire [3:0] tagA, tagB,
-    //collections from the decode phase
-    input wire [1:0] type,
-    input wire [4:0] Rd,
-    input wire [31:0] MemAddr,
-    input wire [31:0] DataIn,
-    input wire [31:0] PcPlus4,
-    input wire Exception,
-    
-    input wire [2:0] next_sch_tag,
+    output wire full, empty,
 
-    //Inputs from the reorder phase
-    input wire [31:0] dataROphase,
-    input wire [2:0] SchTagROphase,
+    input wire [1:0] typeIn,
+    input wire [4:0] rdIn,
+    input wire [31:0] memAddrIn,
+    input wire [31:0] dataIn, //from reorder broadcast
+    input wire [31:0] pcPlus4In,
+    input wire exceptionFlagIn,
+    input wire [SCHEDULER_TAG_BITS - 1 : 0] nextSchTag,
 
-    //data into the scheduler phase
-    output reg [31:0] dataTagA, dataTagB,
-    output reg availableA, availableB,
-    output reg [2:0] schTagA, schTagB, //the tags IN THE SCHEDULER to be reffered to if data is not available
+    input wire [REORDER_TAG_BITS - 1 : 0] tagA, tagB,
+    input wire push_fetch, push_reorder,
 
-    //next steps into the WB phase
-    output reg PreciseExceptionFlag,
-    output reg [31:0] DataOut,
-    output reg [4:0] RdOut,
+    input wire [SCHEDULER_TAG_BITS - 1 : 0] broadcastSchTag,
 
-    //other
-    output wire [3:0] next_tag
+    output reg [31:0] dataOutReg,
+    output reg [4:0] rdOut,
+    output reg regWrEn,
+    output wire [REORDER_TAG_BITS - 1 : 0] broadcastNextTag,
+
+    output wire [31:0] dataOutA, dataOutB,
+    output wire [SCHEDULER_TAG_BITS - 1:0] schTagA, schTagB,
+    output wire validA, validB
 );
-    //there will 2 sets of regs that will together act like each row of the ROB
-    //one set will be updated in when an instruction enters the decode phase
-    //This is going to also update the youngest pointer
-    //The youngest pointer points to entry right after the most recent entry
-    //The oldest will point to the least recent entry. When the entry pointed by old is valid, we will push past it, writing to reg in the process if need be and updating old value
-    //hence when old == young, the ROB is empty
-    //the index of the youngest will also be broadcast to the reg file as next_tag
-    //When ROB is empty, the WB phase will be paused. 
-    //There will be an empty flag, which will stay high as long as old == young
-    //There will also be a full flag, in which case, the decode phase will be paused till the full flag goes down
-    //each ROB row will store the following data
-    //{valid, type, Rd, MemAddr, Data, PcPlus4, Exception?, Scheduler_Tag}
-    //type will determine if the instruciton is execution (Ex: ADD, SUB, float instruction), load, store, jump
-    //During deocde, we will write to type, Rd, MemAddr, PcPlus4, and Scheduler Tag, and set valid to 0
-    //For the reorder phase, we will write to Data, Ready, Exception and if values are retrived, we will set valid to high
-    //In the writeback phase, which is completely independent of the reorder phase, we will write the oldest if the oldest entry's valid is high
+    reg [2**REORDER_TAG_BITS - 1:0] valid = 0;
+    reg [2**REORDER_TAG_BITS - 1:0] active = 0;
+    reg [1:0] typeOfIns [0: 2**REORDER_TAG_BITS - 1]; //10:Exe, 11:load, 00:store, 01:jump (condition to change)
+    reg [4:0] rd [0: 2**REORDER_TAG_BITS - 1];
+    reg [31:0] memAddr [0: 2**REORDER_TAG_BITS - 1];
+    reg [31:0] data [0: 2**REORDER_TAG_BITS - 1];
+    reg [31:0] pcPlus4 [0: 2**REORDER_TAG_BITS - 1];
+    reg exceptionFlag [0: 2**REORDER_TAG_BITS - 1];
+    reg [SCHEDULER_TAG_BITS - 1:0] schTag [0: 2**REORDER_TAG_BITS - 1];
 
-    //scheduler and ROB have a line called next_sch_tag which is responsible for telling what to write in the scheduler tag
-    //Writes in the reg file will only occur via the ROB, no other way
+    reg [SCHEDULER_TAG_BITS - 1:0] old, young;
+    reg [REORDER_TAG_BITS - 1:0] searchedTag;
+    reg searchedFound;
+    //wire [2**REORDER_TAG_BITS-1:0]notEmpty;
+    wire notEmpty;
+    localparam IDLE = 0;
+    localparam PUSH_DATA = 1;
+    localparam TAKE_DATA = 1;
+    localparam POP_DATA = 1;
 
-    //Also add how to deal with nextSignal_decode, cause if we do not and we wait multiple cycles, the ROB will be filled with garbage after all cycles other than the first
+    reg stateDecode, stateReorder, stateWB;
+
+    //For debugging only
+    wire validDebug = valid[0];
+    wire activeDebug = active[0];
+    wire [1:0] typeOfInsDebug = typeOfIns[0]; //10:Exe, 11:load, 00:store, 01:jump (condition to change)
+    wire [4:0] rdDebug = rd[0];
+    wire [31:0] memAddrDebug = memAddr[0];
+    wire [31:0] dataDebug = data[0];
+    wire [31:0] pcPlus4Debug = pcPlus4[0];
+    wire exceptionFlagDebug = exceptionFlag[0];
+    wire [SCHEDULER_TAG_BITS - 1:0] schTagDebug = schTag[0];
+    //Debugging code ends here
+
+    // assign notEmpty[0] = valid[0];
+    // genvar j;
+    // generate
+    //     for (j = 1; j < 2 ** REORDER_TAG_BITS; j = j+1) begin
+    //         assign notEmpty[j] = notEmpty[j-1] | valid[j];
+    //     end
+    // endgenerate
+    assign notEmpty = |valid;
+    assign full = (young == old) && notEmpty;
+    assign empty = (young == old) && ~notEmpty;
+
+    assign dataOutA = data[tagA];
+    assign dataOutB = data[tagB];
+    assign schTagA = schTag[tagA];
+    assign schTagB = schTag[tagB];
+    assign validA = valid[tagA];
+    assign vlaidB = valid[tagB];
+
+    assign broadcastNextTag = young + 1;
+
+    always @(posedge clk or posedge reset) begin
+        if(reset) begin
+            stateDecode <= IDLE;
+            stateReorder <= IDLE;
+            stateWB <= IDLE;
+            old <= 0;
+            young <= 0;
+        end
+    end
+    always @(posedge clk ) begin
+        case (stateDecode)
+            IDLE : begin
+                if (push_fetch) begin
+                    stateDecode <= PUSH_DATA;
+                end
+            end
+            PUSH_DATA : begin
+                young <= young + 1;
+                valid[young] <= 0;
+                active[young] <= 1;
+                typeOfIns[young] <= typeIn;
+                rd[young] <= rdIn;
+                memAddr[young] <= memAddrIn;
+                pcPlus4[young] <= pcPlus4In;
+                schTag[young] <= nextSchTag;
+                stateDecode <= IDLE;
+            end
+            default: ;
+        endcase
+    end
+
+    //content addresable search
+    integer i;
+    always @(*) begin
+        searchedTag = 0;
+        searchedFound = 0;
+        for (i = 0; i < 2**REORDER_TAG_BITS; i++) begin
+            if(active[i] && (schTag[i]==broadcastSchTag)) begin
+                searchedTag = i;
+                searchedFound = 1;
+            end
+        end
+    end
+    always @(posedge clk ) begin
+        case (stateReorder)
+            IDLE : begin
+                if (push_reorder) begin
+                    stateReorder <= TAKE_DATA;
+                end
+            end
+            TAKE_DATA : begin
+                if(searchedFound) begin
+                    data[searchedTag] <= dataIn;
+                    exceptionFlag[searchedTag] <= exceptionFlagIn;
+                    valid[searchedTag] <= 1;
+                end
+                stateReorder <= IDLE;
+            end
+            default: ;
+        endcase
+    end
+
+    always @(posedge clk ) begin
+        case (stateWB)
+            IDLE : begin
+                regWrEn <= 0;
+                if (valid[old] == 1) begin
+                    stateWB <= POP_DATA;
+                end
+            end
+            POP_DATA : begin
+                dataOutReg <= data[old];
+                rdOut <= rd[old];
+                regWrEn <= typeOfIns[old][1];
+                old <= old + 1;
+                valid[old] <= 0;
+                active[old] <= 0;
+                stateWB <= IDLE;
+            end
+            default: ;
+        endcase
+    end
 endmodule
