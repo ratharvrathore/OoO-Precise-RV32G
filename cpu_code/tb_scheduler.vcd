@@ -1,0 +1,504 @@
+$date
+	Tue Jun 02 00:55:03 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_scheduler $end
+$var wire 3 ! tagOut [2:0] $end
+$var wire 3 " nextSchTag [2:0] $end
+$var wire 1 # memWrEnOut $end
+$var wire 1 $ memEnOut $end
+$var wire 1 % jumpOut $end
+$var wire 1 & full $end
+$var wire 1 ' empty $end
+$var wire 32 ( dataOutB [31:0] $end
+$var wire 32 ) dataOutA [31:0] $end
+$var wire 4 * aluControlOut [3:0] $end
+$var parameter 32 + ALU_CONTROL_BITS $end
+$var parameter 32 , SCHEDULER_TAG_BITS $end
+$var reg 4 - aluControlIn [3:0] $end
+$var reg 1 . availableA $end
+$var reg 1 / availableB $end
+$var reg 32 0 broadcastData [31:0] $end
+$var reg 3 1 broadcastTag [2:0] $end
+$var reg 1 2 clk $end
+$var reg 32 3 dataAIn [31:0] $end
+$var reg 32 4 dataBIn [31:0] $end
+$var reg 1 5 jumpIn $end
+$var reg 1 6 memEnIn $end
+$var reg 1 7 memWrEnIn $end
+$var reg 1 8 push_fetch $end
+$var reg 1 9 push_reorder $end
+$var reg 1 : push_schdule $end
+$var reg 1 ; reset $end
+$var reg 3 < tagAIn [2:0] $end
+$var reg 3 = tagBIn [2:0] $end
+$scope module dut $end
+$var wire 4 > aluControlIn [3:0] $end
+$var wire 1 . availableA $end
+$var wire 1 / availableB $end
+$var wire 32 ? broadcastData [31:0] $end
+$var wire 3 @ broadcastTag [2:0] $end
+$var wire 1 2 clk $end
+$var wire 32 A dataAIn [31:0] $end
+$var wire 32 B dataBIn [31:0] $end
+$var wire 1 ' empty $end
+$var wire 1 5 jumpIn $end
+$var wire 1 6 memEnIn $end
+$var wire 1 7 memWrEnIn $end
+$var wire 3 C preNextSchTag [2:0] $end
+$var wire 1 8 push_fetch $end
+$var wire 1 9 push_reorder $end
+$var wire 1 : push_schdule $end
+$var wire 1 ; reset $end
+$var wire 3 D tagAIn [2:0] $end
+$var wire 3 E tagBIn [2:0] $end
+$var wire 3 F youngMapping [2:0] $end
+$var wire 3 G nextSchTag [2:0] $end
+$var wire 1 & full $end
+$var wire 3 H firstValidEntry [2:0] $end
+$var wire 8 I equalToBroadcastTagB [7:0] $end
+$var wire 8 J equalToBroadcastTagA [7:0] $end
+$var parameter 32 K ADD_ENTRY $end
+$var parameter 32 L ALU_CONTROL_BITS $end
+$var parameter 32 M IDLE $end
+$var parameter 32 N POP_ENTRY $end
+$var parameter 32 O SCHEDULER_TAG_BITS $end
+$var parameter 32 P UPDATE_ENTRY $end
+$var reg 8 Q active [7:0] $end
+$var reg 4 R aluControlOut [3:0] $end
+$var reg 32 S dataOutA [31:0] $end
+$var reg 32 T dataOutB [31:0] $end
+$var reg 8 U jump [7:0] $end
+$var reg 1 % jumpOut $end
+$var reg 8 V memEn [7:0] $end
+$var reg 1 $ memEnOut $end
+$var reg 8 W memWrEn [7:0] $end
+$var reg 1 # memWrEnOut $end
+$var reg 3 X poppedIdx [2:0] $end
+$var reg 3 Y preFirstValidEntry [2:0] $end
+$var reg 1 Z stateDecode $end
+$var reg 1 [ stateReorder $end
+$var reg 1 \ stateSchedule $end
+$var reg 3 ] tagOut [2:0] $end
+$var reg 8 ^ validA [7:0] $end
+$var reg 8 _ validB [7:0] $end
+$var reg 3 ` youngIdx [2:0] $end
+$var integer 32 a i [31:0] $end
+$scope begin genblk1[0] $end
+$var parameter 2 b j $end
+$upscope $end
+$scope begin genblk1[1] $end
+$var parameter 2 c j $end
+$upscope $end
+$scope begin genblk1[2] $end
+$var parameter 3 d j $end
+$upscope $end
+$scope begin genblk1[3] $end
+$var parameter 3 e j $end
+$upscope $end
+$scope begin genblk1[4] $end
+$var parameter 4 f j $end
+$upscope $end
+$scope begin genblk1[5] $end
+$var parameter 4 g j $end
+$upscope $end
+$scope begin genblk1[6] $end
+$var parameter 4 h j $end
+$upscope $end
+$scope begin genblk1[7] $end
+$var parameter 4 i j $end
+$upscope $end
+$scope begin genblk2[0] $end
+$var parameter 2 j j $end
+$upscope $end
+$scope begin genblk2[1] $end
+$var parameter 2 k j $end
+$upscope $end
+$scope begin genblk2[2] $end
+$var parameter 3 l j $end
+$upscope $end
+$scope begin genblk2[3] $end
+$var parameter 3 m j $end
+$upscope $end
+$scope begin genblk2[4] $end
+$var parameter 4 n j $end
+$upscope $end
+$scope begin genblk2[5] $end
+$var parameter 4 o j $end
+$upscope $end
+$scope begin genblk2[6] $end
+$var parameter 4 p j $end
+$upscope $end
+$scope begin genblk2[7] $end
+$var parameter 4 q j $end
+$upscope $end
+$upscope $end
+$scope task drive_decode $end
+$var reg 4 r aluControlInp [3:0] $end
+$var reg 1 s availableAp $end
+$var reg 1 t availableBp $end
+$var reg 32 u dataAInp [31:0] $end
+$var reg 32 v dataBInp [31:0] $end
+$var reg 1 w jumpInp $end
+$var reg 1 x memEnInp $end
+$var reg 1 y memWrEnInp $end
+$var reg 3 z tagAInp [2:0] $end
+$var reg 3 { tagBInp [2:0] $end
+$upscope $end
+$scope task drive_reorder $end
+$var reg 3 | broadcastSchTagInp [2:0] $end
+$var reg 32 } dataInp [31:0] $end
+$upscope $end
+$scope task drive_schedule $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b111 q
+b110 p
+b101 o
+b100 n
+b11 m
+b10 l
+b1 k
+b0 j
+b111 i
+b110 h
+b101 g
+b100 f
+b11 e
+b10 d
+b1 c
+b0 b
+b1 P
+b11 O
+b1 N
+b0 M
+b100 L
+b1 K
+b11 ,
+b100 +
+$end
+#0
+$dumpvars
+bx }
+bx |
+bx {
+bx z
+xy
+xx
+xw
+bx v
+bx u
+xt
+xs
+bx r
+b11111111111111111111111111111111 a
+b0 `
+b0 _
+b0 ^
+bx ]
+0\
+0[
+0Z
+b0 Y
+b111 X
+bx W
+bx V
+bx U
+bx T
+bx S
+bx R
+b0 Q
+bx J
+bx I
+b0 H
+b0 G
+b0 F
+bx E
+bx D
+b0 C
+bx B
+bx A
+bx @
+bx ?
+bx >
+bx =
+bx <
+1;
+0:
+09
+08
+x7
+x6
+x5
+bx 4
+bx 3
+02
+bx 1
+bx 0
+x/
+x.
+bx -
+bx *
+bx )
+bx (
+1'
+0&
+x%
+x$
+x#
+b0 "
+bx !
+$end
+#5000
+b1000 a
+12
+#10000
+02
+#13000
+b11 r
+1w
+1y
+1x
+1t
+0s
+b11 {
+b1 z
+b1001100 v
+b1000011 u
+0;
+#15000
+12
+#20000
+b11 -
+b11 >
+15
+17
+16
+1/
+0.
+b11 =
+b11 E
+b1 <
+b1 D
+b1001100 4
+b1001100 B
+b1000011 3
+b1000011 A
+18
+02
+#25000
+1Z
+12
+#30000
+1s
+08
+02
+#35000
+b11111111111111111111111111111111 a
+0'
+b1 F
+b1 "
+b1 G
+0Z
+bx1 U
+bx1 V
+b1 _
+b1 Q
+b1 C
+b1 `
+12
+#40000
+1.
+18
+02
+#45000
+1Z
+12
+#50000
+08
+02
+#55000
+b1 H
+b1 Y
+b11111111111111111111111111111111 a
+b10 F
+b10 "
+b10 G
+0Z
+bx11 U
+bx11 V
+b11 _
+b10 ^
+b11 Q
+b10 C
+b10 `
+12
+#60000
+18
+02
+#65000
+1Z
+12
+#70000
+0s
+08
+02
+#75000
+b11111111111111111111111111111111 a
+b1 Y
+b11 F
+b11 "
+b11 G
+0Z
+bx111 U
+bx111 V
+b111 _
+b110 ^
+b111 Q
+b11 C
+b11 `
+12
+#80000
+0.
+18
+02
+#85000
+1Z
+12
+#90000
+08
+02
+#95000
+b11111111111111111111111111111111 a
+b1 Y
+b100 F
+b100 "
+b100 G
+0Z
+bx1111 U
+bx1111 V
+b1111 _
+b1111 Q
+b100 C
+b100 `
+12
+#100000
+1:
+02
+#105000
+1\
+12
+#110000
+0:
+02
+#115000
+b10 H
+b10 Y
+b11 F
+b11 "
+b11 G
+0\
+b1 X
+b1101 Q
+1%
+1$
+b11 *
+b11 R
+b1 !
+b1 ]
+b1001100 (
+b1001100 T
+b1000011 )
+b1000011 S
+b11 C
+b11 `
+b11111111111111111111111111111111 a
+12
+#120000
+1:
+02
+#125000
+1\
+12
+#130000
+b1 |
+b10111110 }
+0:
+02
+#135000
+b0 H
+b0 Y
+0\
+b10 X
+b1001 Q
+b10 !
+b10 ]
+b10 C
+b10 `
+b11111111111111111111111111111111 a
+12
+#140000
+bx1111 J
+bx0000 I
+b1 1
+b1 @
+b10111110 0
+b10111110 ?
+19
+02
+#145000
+1[
+12
+#150000
+09
+02
+#155000
+b0 Y
+0[
+b1111 ^
+b11111111111111111111111111111111 a
+12
+#160000
+1:
+02
+#165000
+1\
+12
+#170000
+0:
+02
+#175000
+b101 H
+b11 Y
+b10 F
+b10 "
+b10 G
+0\
+b0 X
+b1000 Q
+b0 !
+b0 ]
+b10111110 )
+b10111110 S
+b1 C
+b1 `
+b11111111111111111111111111111111 a
+12
+#180000
+02
+#185000
+12
+#190000
+02
+#195000
+12
+#200000
+02

@@ -1,37 +1,179 @@
-module scheduler (
+module scheduler #(
+    parameter SCHEDULER_TAG_BITS = 3,
+    parameter ALU_CONTROL_BITS = 4
+) (
     input wire clk, reset,
 
-    input wire [31:0] dataA, dataB,
-    input wire [2:0] tagA, tagB,
+    output wire full, empty,
+
+    input wire [31:0] dataAIn, dataBIn,
+    input wire [SCHEDULER_TAG_BITS-1:0] tagAIn, tagBIn,
     input wire availableA, availableB,
-    //Remember that the value could've been retrived from reg file so there is some logic in between to be taken care of
+    input wire memEnIn,
+    input wire memWrEnIn,
+    input wire jumpIn,
+    input wire [ALU_CONTROL_BITS-1:0] aluControlIn,
 
-    input wire [31:0] instruciton,
-    //along with the entry, there will be some basic data reagrding the instruction that is being performed.
-    //instead of instruction itself, we can use the control varibales also
-    //For now it is 32 bits, it may be less
+    input wire push_fetch,
+    input wire push_schdule,
+    input wire push_reorder,
 
-    //Inputs from the reorder phase
-    input wire [31:0] dataROphase,
-    input wire [2:0] SchTagROphase,
+    input wire [31:0] broadcastData,
+    input wire [SCHEDULER_TAG_BITS-1:0] broadcastTag,
 
-    input wire nextSignal_schedule, //This wire comes from the next/flush logic. When we get this, push
+    output reg [31:0] dataOutA, dataOutB,
+    output reg [SCHEDULER_TAG_BITS-1:0] tagOut,
+    output reg [ALU_CONTROL_BITS-1:0] aluControlOut,
+    output reg memEnOut, memWrEnOut, jumpOut,
 
-    output reg [31:0] dataOut1, dataOut2, //to the ALU
-    output reg [31:0] ControlVars, //The control variables needed up ahead in the pipeline, including stuff like ALUControl etc
-
+    output wire [SCHEDULER_TAG_BITS-1:0] nextSchTag
 );
-    //Also has old, young pointers to find if full or empty
-    //Whichever instruction from old to new is the first to get ready will get pushed if we can push
-    //The scheduler works in the following pattern:
-    //An all the data is sent from the ROB and the reg file with some combinational logic in between
+    reg [SCHEDULER_TAG_BITS-1:0] youngIdx, poppedIdx, preFirstValidEntry;
+    wire [SCHEDULER_TAG_BITS-1:0] youngMapping, firstValidEntry, preNextSchTag;
+    reg [(1<<SCHEDULER_TAG_BITS)-1:0] lookupTable [0:(1<<SCHEDULER_TAG_BITS)-1];
+    wire [(1<<SCHEDULER_TAG_BITS)-1:0] updatedLookupTable [0:(1<<SCHEDULER_TAG_BITS)-1];
 
-    //Assume for the instruction ADD R3, R1, R2
-    //In the deocde phase, valid of R3 was set to low and the tag in the reg file points to the ROB
-    //Now, in the ROB, there lies a tag pointing to the respective scheduler tag from which the result generates
-    //If the value of the R1 and R2 does not exist, then they point to the ROB also where if it does not exist again it points to some tag in scheduler which will gernerate its result
-    //we will then write that value in the tag region 
-    //Note that scheduler itself is the transition from D to S and then to E
+    reg [(1<<SCHEDULER_TAG_BITS)-1:0] active, validA, validB, memEn, memWrEn, jump;
+    reg [31:0] dataA [0:(1<<SCHEDULER_TAG_BITS)-1];
+    reg [31:0] dataB [0:(1<<SCHEDULER_TAG_BITS)-1];
+    reg [SCHEDULER_TAG_BITS-1:0] tagA [0:(1<<SCHEDULER_TAG_BITS)-1];
+    reg [SCHEDULER_TAG_BITS-1:0] tagB [0:(1<<SCHEDULER_TAG_BITS)-1];
+    reg [ALU_CONTROL_BITS-1:0] aluControl [0:(1<<SCHEDULER_TAG_BITS)-1];
 
-    //Data in the scheduler: validA, dataA, tagA, validB, dataB, tagB, related control varibales
+    reg stateDecode, stateReorder, stateSchedule;
+    localparam IDLE = 0;
+    localparam ADD_ENTRY = 1;
+    localparam UPDATE_ENTRY = 1;
+    localparam POP_ENTRY = 1;
+
+    initial begin
+        youngIdx = 0;
+        poppedIdx = {SCHEDULER_TAG_BITS{1'b1}};
+    end
+
+    integer i;
+    genvar j;
+
+    generate
+        for (j = 0; j<((1<<SCHEDULER_TAG_BITS)); j=j+1) begin
+            assign updatedLookupTable[j] = (j=={SCHEDULER_TAG_BITS{1'b1}}) ? lookupTable[poppedIdx] : ((j >= poppedIdx) ? lookupTable[j+1] : lookupTable[j]);
+        end
+    endgenerate
+
+    assign youngMapping = lookupTable[youngIdx];
+
+    assign preNextSchTag = youngIdx;
+
+    assign nextSchTag = lookupTable[preNextSchTag];
+
+    assign firstValidEntry = lookupTable[preFirstValidEntry];
+
+    assign full = &active;
+    assign empty = ~(|active);
+
+    always @(*) begin
+        preFirstValidEntry = 0;
+        for (i = (1<<SCHEDULER_TAG_BITS) - 1; i>=0; i = i-1) begin
+            if(active[i] & validA[i] & validB[i]) begin
+                preFirstValidEntry = i;
+            end
+        end
+    end
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            for (i = 0; i<((1<<SCHEDULER_TAG_BITS)); i=i+1) begin
+                lookupTable[i] <= i;
+            end
+            stateDecode <= 0;
+            stateReorder <= 0;
+            stateSchedule <= 0;
+            active <= 0;
+            validA <= 0;
+            validB <= 0;
+        end
+    end
+    always @(posedge clk ) begin
+        case (stateDecode)
+            IDLE : begin
+                if (push_fetch) begin
+                    stateDecode <= ADD_ENTRY;
+                end
+            end
+            ADD_ENTRY : begin
+                youngIdx <= youngIdx + 1;
+                active[nextSchTag] <= 1;
+                validA[nextSchTag] <= availableA;
+                validB[nextSchTag] <= availableB;
+                tagA[nextSchTag] <= tagAIn;
+                tagB[nextSchTag] <= tagBIn;
+                dataA[nextSchTag] <= dataAIn;
+                dataB[nextSchTag] <= dataBIn;
+                memEn[nextSchTag] <= memEnIn;
+                memWrEn[nextSchTag] <= memWrEn;
+                jump[nextSchTag] <= jumpIn;
+                aluControl[nextSchTag] <= aluControlIn;
+                stateDecode <= IDLE;
+            end
+            default: ;
+        endcase
+    end
+    always @(posedge clk ) begin
+        case (stateSchedule)
+            IDLE : begin
+                if (push_schdule) begin
+                    stateSchedule <= POP_ENTRY;
+                end
+            end
+            POP_ENTRY : begin
+                youngIdx <= youngIdx - 1;
+                dataOutA <= dataA[firstValidEntry];
+                dataOutB <= dataB[firstValidEntry];
+                tagOut <= firstValidEntry;
+                aluControlOut <= aluControl[firstValidEntry];
+                memEnOut <= memEn[firstValidEntry];
+                memWrEnOut <= memWrEn[firstValidEntry];
+                jumpOut <= jump[firstValidEntry];
+                active[firstValidEntry] <= 0;
+                poppedIdx <= preFirstValidEntry;
+                stateSchedule <= IDLE;
+                for (i = 0; i<(1<<SCHEDULER_TAG_BITS); i=i+1) begin
+                   lookupTable[i] <= updatedLookupTable[i]; 
+                end
+            end
+            default: ;
+        endcase
+    end
+
+    //CAM but multiple assignments could be waiting so we put a comparator in front of each
+    wire [(1<<SCHEDULER_TAG_BITS)-1:0] equalToBroadcastTagA, equalToBroadcastTagB;
+    generate
+        for (j = 0; j<(1<<SCHEDULER_TAG_BITS); j = j+1) begin
+            assign equalToBroadcastTagA[j] = (tagA[j] == broadcastTag);
+            assign equalToBroadcastTagB[j] = (tagB[j] == broadcastTag);
+        end
+    endgenerate
+    always @(posedge clk ) begin
+        case (stateReorder)
+            IDLE : begin
+                if(push_reorder) begin
+                    stateReorder <= UPDATE_ENTRY;
+                end
+            end
+            UPDATE_ENTRY : begin
+                for (i = 0; i<(1<<SCHEDULER_TAG_BITS); i = i+1) begin
+                    if(equalToBroadcastTagA[i]) begin
+                        dataA[i] <= broadcastData;
+                        validA[i] <= 1;
+                    end
+                    if (equalToBroadcastTagB[i]) begin
+                        dataB[i] <= broadcastData;
+                        validB[i] <= 1;
+                    end
+                end
+                stateReorder <= IDLE;
+            end
+            default: ;
+        endcase
+    end
 endmodule

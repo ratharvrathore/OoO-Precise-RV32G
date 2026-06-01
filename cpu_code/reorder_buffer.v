@@ -69,7 +69,7 @@ module reorder_buffer #(
     //         assign notEmpty[j] = notEmpty[j-1] | valid[j];
     //     end
     // endgenerate
-    assign notEmpty = |valid;
+    assign notEmpty = |active;
     assign full = (young == old) && notEmpty;
     assign empty = (young == old) && ~notEmpty;
 
