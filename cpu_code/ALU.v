@@ -1,5 +1,5 @@
 module ALU #(
-    ALU_CONTROL_BITS = 5
+    ALU_CONTROL_BITS = 6
 ) (
     input wire clk, reset,
     input wire [31:0] dataA, dataB,
@@ -14,35 +14,35 @@ module ALU #(
     //MULT fused add and some other funcitons were not implemented here
     //The local param values can be mixed up for convinience or easier control unit coding but the essence is the same
 
-    localparam ADD = 0;
-    localparam SUB = 1;
-    localparam XOR = 2;
-    localparam OR = 3;
-    localparam AND = 4;
-    localparam SLL = 5;
-    localparam SRL = 6;
-    localparam SRA = 7;
-    localparam SLT = 8;
-    localparam SLTU = 9;
-    localparam MUL = 10;
-    localparam MULH = 11;
-    localparam MULHSU = 12;
-    localparam MULHU = 13;
-    localparam DIV = 14;
-    localparam DIVU = 15;
-    localparam REM = 16;
-    localparam REMU = 17;
-    localparam FADD = 18;
-    localparam FSUB = 19;
-    localparam FMUL = 20;
-    localparam FDIV = 21;
-    localparam FSLT = 22;
-    localparam FCTI = 23;
-    localparam ICTF = 24;
+    localparam ADD = 6'b0_0_1_000;
+    localparam SUB = 6'b0_0_1_001;
+    localparam XOR = 6'b0_0_0_000;
+    localparam OR = 6'b0_0_0_001;
+    localparam AND = 6'b0_0_0_010;
+    localparam SLL = 6'b0_0_0_100;
+    localparam SRL = 6'b0_0_0_101;
+    localparam SRA = 6'b0_1_0_000;
+    localparam SLT = 6'b0_0_1_111;
+    localparam SLTU = 6'b1_0_1_111;
+    localparam MUL = 6'b0_0_1_010;
+    localparam MULU = 6'b1_0_1_010;
+    localparam MULH = 6'b0_0_1_011;
+    localparam MULHU = 6'b1_0_1_011;
+    localparam DIV = 6'b0_0_1_100;
+    localparam DIVU = 6'b1_0_1_100;
+    localparam REM = 6'b0_0_1_101;
+    localparam REMU = 6'b1_0_1_101;
+    localparam FADD = 6'b0_1_1_000;
+    localparam FSUB = 6'b0_1_1_001;
+    localparam FMUL = 6'b0_1_1_010;
+    localparam FDIV = 6'b0_1_1_100;
+    localparam FSLT = 6'b0_1_1_111;
+    localparam FCTI = 6'b0_1_0_001;
+    localparam ICTF = 6'b0_1_0_010;
 
-    wire sOrU; //1=signed
+    wire sOrU;
 
-    assign sOrU = 1; //INSTEAD OF WRITING 1 MAKE SOME LOGIC UP LATER
+    assign sOrU = ALUControl[5]; //INSTEAD OF WRITING 1 MAKE SOME LOGIC UP LATER
 
     wire [31:0] multInA, multInB, divInA, divInB, quoOut, remOut, addOut, subOut;
     wire [63:0] multOut;
