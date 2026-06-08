@@ -1,6 +1,6 @@
 module scheduler #(
     parameter SCHEDULER_TAG_BITS = 3,
-    parameter ALU_CONTROL_BITS = 4
+    parameter ALU_CONTROL_BITS = 5
 ) (
     input wire clk, reset,
 
