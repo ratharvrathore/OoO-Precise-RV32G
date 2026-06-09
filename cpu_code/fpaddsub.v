@@ -32,8 +32,8 @@ module fp_addsub (
 
     wire fA_larger_exp = (fA_exp >= fB_exp);
     wire [7:0] exp_big = fA_larger_exp ? fA_exp : fB_exp;
-    wire [7:0] exp_small = fA_larger_exp ? fB_exp : fA_exp;
-    wire [7:0] exp_diff = exp_big - exp_smal ; 
+    wire [7:0] exp_smalll = fA_larger_exp ? fB_exp : fA_exp;
+    wire [7:0] exp_diff = exp_big - exp_small ; 
     wire [23:0] sig_big = fA_larger_exp ? fA_sig : fB_sig;
     wire sign_big = fA_larger_exp ? fA_sign : fB_sign;
     wire [23:0] sig_small = fA_larger_exp ? fB_sig : fA_sig;
