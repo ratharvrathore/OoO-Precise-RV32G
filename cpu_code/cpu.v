@@ -106,6 +106,9 @@ module cpu (
     reg [31:0] mem_stage_value;
     reg mem_stage_exception;
     reg [SCHEDULER_TAG_BITS-1:0] mem_stage_tag;
+    reg load_pending;
+    reg [SCHEDULER_TAG_BITS-1:0] load_pending_tag;
+    reg load_pending_exception;
 
     reg [31:0] jump_target;
     reg jump_valid;
@@ -265,7 +268,7 @@ module cpu (
         .rob_full(rob_full),
         .scheduler_empty(sch_empty),
         .alu_busy(alu_busy),
-        .execute_valid(mem_stage_valid),
+        .execute_valid(execute_valid),
         .mem_required(execute_mem_en),
         .mem_done(mem_done),
         .push_fetch(push_fetch),
@@ -297,6 +300,9 @@ module cpu (
             mem_stage_value <= 32'd0;
             mem_stage_exception <= 1'b0;
             mem_stage_tag <= {SCHEDULER_TAG_BITS{1'b0}};
+            load_pending <= 1'b0;
+            load_pending_tag <= {SCHEDULER_TAG_BITS{1'b0}};
+            load_pending_exception <= 1'b0;
             jump_target <= 32'd0;
             jump_valid <= 1'b0;
             mem_address <= 32'd0;
@@ -339,24 +345,40 @@ module cpu (
             mem_address <= execute_result;
             mem_write_data <= execute_data_b;
 
-            if (execute_valid) begin
+            mem_stage_valid <= 1'b0;
+            if (load_pending && mem_done) begin
                 mem_stage_valid <= 1'b1;
-                mem_stage_tag <= execute_tag;
-                mem_stage_exception <= execute_exception;
+                mem_stage_tag <= load_pending_tag;
+                mem_stage_exception <= load_pending_exception;
+                mem_stage_value <= mem_read_data;
+                load_pending <= 1'b0;
+            end
+
+            if (execute_valid) begin
                 if (execute_mem_en && !execute_mem_wr) begin
-                    mem_stage_value <= mem_read_data;
+                    if (mem_done) begin
+                        mem_stage_valid <= 1'b1;
+                        mem_stage_tag <= execute_tag;
+                        mem_stage_exception <= execute_exception;
+                        mem_stage_value <= mem_read_data;
+                    end else begin
+                        load_pending <= 1'b1;
+                        load_pending_tag <= execute_tag;
+                        load_pending_exception <= execute_exception;
+                    end
                 end else begin
+                    mem_stage_valid <= 1'b1;
+                    mem_stage_tag <= execute_tag;
+                    mem_stage_exception <= execute_exception;
                     mem_stage_value <= execute_result;
                 end
 
                 if (execute_jump) begin
-                    if (!execute_branch || execute_result[0]) begin
+                    if (!execute_branch) begin
                         jump_valid <= 1'b1;
                         jump_target <= execute_result;
                     end
                 end
-            end else begin
-                mem_stage_valid <= 1'b0;
             end
 
             if (push_reorder) begin

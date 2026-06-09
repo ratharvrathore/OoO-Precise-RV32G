@@ -103,7 +103,7 @@ module control_unit #(
                     10'b0000000_011: alu_control = ALU_SLTU;
                     10'b0000001_000: alu_control = ALU_MUL;
                     10'b0000001_001: alu_control = ALU_MULH;
-                    10'b0000001_010: alu_control = ALU_MUL;
+                    10'b0000001_010: alu_control = ALU_MULU;
                     10'b0000001_011: alu_control = ALU_MULHU;
                     10'b0000001_100: alu_control = ALU_DIV;
                     10'b0000001_101: alu_control = ALU_DIVU;

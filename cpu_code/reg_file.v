@@ -20,8 +20,8 @@ module reg_file (
 );
     reg [36:0] regfile [0:63];
 
-    assign {available1, data_Rs1, tag1} = regfile[Rs1];
-    assign {available2, data_Rs2, tag2} = regfile[Rs2];
+    assign {available1, data_Rs1, tag1} = (Rs1 == 5'd0) ? {1'b1, 32'd0, 4'hF} : regfile[Rs1];
+    assign {available2, data_Rs2, tag2} = (Rs2 == 5'd0) ? {1'b1, 32'd0, 4'hF} : regfile[Rs2];
 
     integer i;
     always @(posedge clk or posedge reset) begin

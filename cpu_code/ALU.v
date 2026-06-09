@@ -89,8 +89,8 @@ module ALU #(
             SLTU : dataOut = (dataA < dataB) ? 32'd1 : 32'd0;
             MUL  : dataOut = $signed(dataA) * $signed(dataB);
             MULU : dataOut = dataA * dataB;
-            MULH : dataOut = ($signed(dataA) * $signed(dataB)) >>> 32;
-            MULHU: dataOut = (dataA * dataB) >> 32;
+            MULH : dataOut = ($signed({{32{dataA[31]}}, dataA}) * $signed({{32{dataB[31]}}, dataB})) >> 32;
+            MULHU: dataOut = ((64'd0 + dataA) * (64'd0 + dataB)) >> 32;
             DIV  : begin
                 if (dataB == 32'd0) begin
                     dataOut = 32'hFFFF_FFFF;
@@ -128,16 +128,19 @@ module ALU #(
                 dataOut = fadd_out;
                 exceptionRaised = fadd_exception;
             end
-            FMUL : dataOut = dataA * dataB;
-            FDIV : begin
-                if (dataB == 32'd0) begin
-                    dataOut = 32'h7FC0_0000;
-                    exceptionRaised = 1'b1;
-                end else begin
-                    dataOut = dataA / dataB;
-                end
+            FMUL : begin
+                dataOut = 32'h7FC0_0000;
+                exceptionRaised = 1'b1;
             end
-            FSLT : dataOut = (dataA < dataB) ? 32'd1 : 32'd0;
+            FDIV : begin
+                dataOut = 32'h7FC0_0000;
+                exceptionRaised = 1'b1;
+            end
+            FSLT : begin
+                dataOut = (dataA[31] > dataB[31]) ? 32'd1 :
+                          ((dataA[31] < dataB[31]) ? 32'd0 :
+                          ((dataA[30:0] > dataB[30:0]) ? {31'd0, dataA[31]} : {31'd0, ~dataA[31]}));
+            end
             FCTI : begin
                 dataOut = fcti_out;
                 exceptionRaised = fcti_exception;
