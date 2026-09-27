@@ -165,7 +165,7 @@ module cpu (
  
     assign schMemEnIn = schMemEnIn_cu;
     assign schMemWrEnIn = schMemWrEnIn_cu;
-    assign rdDecode = rdIn    // the destination register seen by the reg-file 
+    assign rdDecode = rdIn;    // the destination register seen by the reg-file 
     assign schALUControlIn = schALUControlIn_cu;
     assign useImm = useImm_cu;
     assign robMemAddrIn = robMemAddrIn_cu;
