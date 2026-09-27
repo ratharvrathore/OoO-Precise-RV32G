@@ -79,7 +79,7 @@ module reorder_buffer #(
     assign schTagA = schTag[tagA];
     assign schTagB = schTag[tagB];
     assign validA = valid[tagA];
-    assign vlaidB = valid[tagB];
+    assign validB = valid[tagB];
 
     assign broadcastNextTag = young + 1;
 
