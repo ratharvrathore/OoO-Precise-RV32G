@@ -110,7 +110,7 @@ module scheduler #(
                 dataA[nextSchTag] <= dataAIn;
                 dataB[nextSchTag] <= dataBIn;
                 memEn[nextSchTag] <= memEnIn;
-                memWrEn[nextSchTag] <= memWrEn;
+                memWrEn[nextSchTag] <= memWrEnIn;
                 jump[nextSchTag] <= jumpIn;
                 aluControl[nextSchTag] <= aluControlIn;
                 stateDecode <= IDLE;
